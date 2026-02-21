@@ -127,7 +127,7 @@ async def main() -> None:
                     # Clean up the temporary file
                     try:
                         os.unlink(temp_path)
-                    except:  # noqa: E722
+                    except OSError:
                         pass
             else:
                 raise ValueError(f"Unknown tool: {name}")
