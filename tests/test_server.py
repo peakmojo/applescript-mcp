@@ -7,7 +7,6 @@ import pytest
 import applescript_mcp
 from applescript_mcp.server import configure_logging, main, parse_arguments
 
-
 # ============== __init__.py ==============
 
 

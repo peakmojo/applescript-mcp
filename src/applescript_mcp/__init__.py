@@ -1,12 +1,12 @@
-import argparse
 import asyncio
 import logging
+
 from . import server
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('mcp_applescript')
 
-def main():
+def main() -> None:
     logger.debug("Starting applescript-mcp main()")
 
     # Run the async main function

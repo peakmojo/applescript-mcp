@@ -1,14 +1,14 @@
 import argparse
 import logging
-import json
-from typing import Any, Dict, List, Optional
 import os
-import tempfile
 import subprocess
-from mcp.server.models import InitializationOptions
+import tempfile
+from typing import Any
+
+import mcp.server.stdio
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
-import mcp.server.stdio
+from mcp.server.models import InitializationOptions
 from pydantic import AnyUrl
 
 logger = logging.getLogger('applescript_mcp')
@@ -24,7 +24,7 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def configure_logging():
+def configure_logging() -> None:
     """Configure logging based on the log level argument"""
     args = parse_arguments()
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)
@@ -36,7 +36,7 @@ def configure_logging():
     logger.info(f"Logging configured with level: {args.log_level.upper()}")
 
 
-async def main():
+async def main() -> None:
     """Run the AppleScript MCP server."""
     configure_logging()
     logger.info("Server starting")
@@ -56,17 +56,21 @@ async def main():
         return [
             types.Tool(
                 name="applescript_execute",
-                description="""Run AppleScript code to interact with Mac applications and system features. This tool can access and manipulate data in Notes, Calendar, Contacts, Messages, Mail, Finder, Safari, and other Apple applications. Common use cases include but not limited to:
-- Retrieve or create notes in Apple Notes
-- Access or add calendar events and appointments
-- List contacts or modify contact details
-- Search for and organize files using Spotlight or Finder
-- Get system information like battery status, disk space, or network details
-- Read or organize browser bookmarks or history
-- Access or send emails, messages, or other communications
-- Read, write, or manage file contents
-- Execute shell commands and capture the output
-""",
+                description=(
+                    "Run AppleScript code to interact with Mac applications and system features."
+                    " This tool can access and manipulate data in Notes, Calendar, Contacts,"
+                    " Messages, Mail, Finder, Safari, and other Apple applications."
+                    " Common use cases include but not limited to:\n"
+                    "- Retrieve or create notes in Apple Notes\n"
+                    "- Access or add calendar events and appointments\n"
+                    "- List contacts or modify contact details\n"
+                    "- Search for and organize files using Spotlight or Finder\n"
+                    "- Get system information like battery status, disk space, or network details\n"
+                    "- Read or organize browser bookmarks or history\n"
+                    "- Access or send emails, messages, or other communications\n"
+                    "- Read, write, or manage file contents\n"
+                    "- Execute shell commands and capture the output\n"
+                ),
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -96,7 +100,7 @@ async def main():
 
                 # Get timeout parameter or use default
                 timeout = arguments.get("timeout", 60)
-                
+
                 # Create temp file for the AppleScript
                 with tempfile.NamedTemporaryFile(suffix='.scpt', delete=False) as temp:
                     temp_path = temp.name
@@ -104,30 +108,35 @@ async def main():
                         # Write the AppleScript to the temp file
                         temp.write(arguments["code_snippet"].encode('utf-8'))
                         temp.flush()
-                        
+
                         # Execute the AppleScript
                         cmd = ["/usr/bin/osascript", temp_path]
                         result = subprocess.run(
-                            cmd, 
-                            capture_output=True, 
-                            text=True, 
+                            cmd,
+                            capture_output=True,
+                            text=True,
                             timeout=timeout
                         )
-                        
+
                         if result.returncode != 0:
                             error_message = f"AppleScript execution failed: {result.stderr}"
                             return [types.TextContent(type="text", text=error_message)]
-                        
+
                         return [types.TextContent(type="text", text=result.stdout)]
                     except subprocess.TimeoutExpired:
-                        return [types.TextContent(type="text", text=f"AppleScript execution timed out after {timeout} seconds")]
+                        return [
+                            types.TextContent(
+                                type="text",
+                                text=f"AppleScript execution timed out after {timeout} seconds",
+                            )
+                        ]
                     except Exception as e:
                         return [types.TextContent(type="text", text=f"Error executing AppleScript: {str(e)}")]
                     finally:
                         # Clean up the temporary file
                         try:
                             os.unlink(temp_path)
-                        except:
+                        except:  # noqa: E722
                             pass
             else:
                 raise ValueError(f"Unknown tool: {name}")
