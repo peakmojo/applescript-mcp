@@ -1,7 +1,7 @@
 import argparse
+import asyncio
 import logging
 import os
-import subprocess
 import tempfile
 from typing import Any
 
@@ -105,22 +105,29 @@ async def main() -> None:
                     temp.write(arguments["code_snippet"].encode("utf-8"))
                     temp.close()
 
-                    # Execute the AppleScript
-                    cmd = ["/usr/bin/osascript", temp_path]
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+                    # Execute the AppleScript asynchronously
+                    proc = await asyncio.create_subprocess_exec(
+                        "/usr/bin/osascript",
+                        temp_path,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    try:
+                        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+                    except asyncio.TimeoutError:
+                        proc.kill()
+                        return [
+                            types.TextContent(
+                                type="text",
+                                text=f"AppleScript execution timed out after {timeout} seconds",
+                            )
+                        ]
 
-                    if result.returncode != 0:
-                        error_message = f"AppleScript execution failed: {result.stderr}"
+                    if proc.returncode != 0:
+                        error_message = f"AppleScript execution failed: {stderr.decode()}"
                         return [types.TextContent(type="text", text=error_message)]
 
-                    return [types.TextContent(type="text", text=result.stdout)]
-                except subprocess.TimeoutExpired:
-                    return [
-                        types.TextContent(
-                            type="text",
-                            text=f"AppleScript execution timed out after {timeout} seconds",
-                        )
-                    ]
+                    return [types.TextContent(type="text", text=stdout.decode())]
                 except Exception as e:
                     return [types.TextContent(type="text", text=f"Error executing AppleScript: {str(e)}")]
                 finally:

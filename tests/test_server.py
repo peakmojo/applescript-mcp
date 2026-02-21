@@ -1,5 +1,5 @@
+import asyncio
 import logging
-import subprocess
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -71,6 +71,15 @@ def _make_decorator_factory(captured: dict[str, object], name: str):
     return factory
 
 
+def _mock_proc(*, returncode: int = 0, stdout: bytes = b"", stderr: bytes = b"") -> AsyncMock:
+    """Create a mock async subprocess process."""
+    proc = AsyncMock()
+    proc.communicate.return_value = (stdout, stderr)
+    proc.returncode = returncode
+    proc.kill = MagicMock()
+    return proc
+
+
 @pytest.fixture
 async def handlers():
     """Run main() with a mocked Server to capture the registered handlers."""
@@ -135,35 +144,37 @@ class TestHandleListTools:
 
 class TestHandleCallTool:
     async def test_success(self, handlers):
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "Hello World\n"
+        proc = _mock_proc(returncode=0, stdout=b"Hello World\n")
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=proc):
             result = await handlers["call_tool"]("applescript_execute", {"code_snippet": 'display dialog "hi"'})
 
         assert len(result) == 1
         assert result[0].text == "Hello World\n"
 
     async def test_error_returncode(self, handlers):
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stderr = "syntax error"
+        proc = _mock_proc(returncode=1, stderr=b"syntax error")
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=proc):
             result = await handlers["call_tool"]("applescript_execute", {"code_snippet": "bad script"})
 
         assert "AppleScript execution failed" in result[0].text
         assert "syntax error" in result[0].text
 
     async def test_timeout(self, handlers):
-        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("cmd", 30)):
+        proc = _mock_proc()
+
+        with (
+            patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=proc),
+            patch("asyncio.wait_for", new_callable=AsyncMock, side_effect=asyncio.TimeoutError),
+        ):
             result = await handlers["call_tool"]("applescript_execute", {"code_snippet": "slow script", "timeout": 30})
 
         assert "timed out after 30 seconds" in result[0].text
+        proc.kill.assert_called_once()
 
     async def test_generic_exception(self, handlers):
-        with patch("subprocess.run", side_effect=RuntimeError("boom")):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, side_effect=RuntimeError("boom")):
             result = await handlers["call_tool"]("applescript_execute", {"code_snippet": "bad"})
 
         assert "Error executing AppleScript: boom" in result[0].text
@@ -193,27 +204,46 @@ class TestHandleCallTool:
 
         mock_temp.close = mark_closed
 
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "ok"
+        proc = _mock_proc(returncode=0, stdout=b"ok")
 
-        def assert_closed_at_exec_time(*args, **kwargs):
+        async def assert_closed_at_exec_time(*args, **kwargs):
             assert file_was_closed, "Temp file should be closed before subprocess starts"
-            return mock_result
+            return proc
 
         with (
             patch("tempfile.NamedTemporaryFile", return_value=mock_temp),
-            patch("subprocess.run", side_effect=assert_closed_at_exec_time),
+            patch("asyncio.create_subprocess_exec", side_effect=assert_closed_at_exec_time),
         ):
             await handlers["call_tool"]("applescript_execute", {"code_snippet": "test"})
 
+    async def test_subprocess_does_not_block_event_loop(self, handlers):
+        """Regression: subprocess must be async so the event loop stays responsive (ba1e331)."""
+        concurrent_task_ran = False
+
+        async def slow_communicate():
+            await asyncio.sleep(0)
+            return (b"ok", b"")
+
+        proc = _mock_proc(returncode=0)
+        proc.communicate = slow_communicate
+
+        async def check_concurrent():
+            nonlocal concurrent_task_ran
+            concurrent_task_ran = True
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=proc):
+            await asyncio.gather(
+                handlers["call_tool"]("applescript_execute", {"code_snippet": "test"}),
+                check_concurrent(),
+            )
+
+        assert concurrent_task_ran, "Event loop should remain responsive during subprocess execution"
+
     async def test_temp_file_cleanup_on_success(self, handlers):
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "ok"
+        proc = _mock_proc(returncode=0, stdout=b"ok")
 
         with (
-            patch("subprocess.run", return_value=mock_result),
+            patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=proc),
             patch("os.unlink") as mock_unlink,
         ):
             await handlers["call_tool"]("applescript_execute", {"code_snippet": "test"})
@@ -221,19 +251,17 @@ class TestHandleCallTool:
 
     async def test_temp_file_cleanup_on_error(self, handlers):
         with (
-            patch("subprocess.run", side_effect=RuntimeError("fail")),
+            patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, side_effect=RuntimeError("fail")),
             patch("os.unlink") as mock_unlink,
         ):
             await handlers["call_tool"]("applescript_execute", {"code_snippet": "test"})
             mock_unlink.assert_called_once()
 
     async def test_unlink_failure_suppressed(self, handlers):
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "ok"
+        proc = _mock_proc(returncode=0, stdout=b"ok")
 
         with (
-            patch("subprocess.run", return_value=mock_result),
+            patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=proc),
             patch("os.unlink", side_effect=OSError("rm failed")),
         ):
             result = await handlers["call_tool"]("applescript_execute", {"code_snippet": "test"})
