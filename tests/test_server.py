@@ -180,6 +180,33 @@ class TestHandleCallTool:
         result = await handlers["call_tool"]("nonexistent", {})
         assert "Error: Unknown tool: nonexistent" in result[0].text
 
+    async def test_temp_file_closed_before_execution(self, handlers):
+        """Regression: temp file must be closed before osascript reads it (269b8d7)."""
+        mock_temp = MagicMock()
+        mock_temp.name = "/tmp/test.scpt"
+
+        file_was_closed = False
+
+        def mark_closed():
+            nonlocal file_was_closed
+            file_was_closed = True
+
+        mock_temp.close = mark_closed
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "ok"
+
+        def assert_closed_at_exec_time(*args, **kwargs):
+            assert file_was_closed, "Temp file should be closed before subprocess starts"
+            return mock_result
+
+        with (
+            patch("tempfile.NamedTemporaryFile", return_value=mock_temp),
+            patch("subprocess.run", side_effect=assert_closed_at_exec_time),
+        ):
+            await handlers["call_tool"]("applescript_execute", {"code_snippet": "test"})
+
     async def test_temp_file_cleanup_on_success(self, handlers):
         mock_result = MagicMock()
         mock_result.returncode = 0

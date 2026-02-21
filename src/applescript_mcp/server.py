@@ -98,38 +98,37 @@ async def main() -> None:
                 # Get timeout parameter or use default
                 timeout = arguments.get("timeout", 60)
 
-                # Create temp file for the AppleScript
-                with tempfile.NamedTemporaryFile(suffix=".scpt", delete=False) as temp:
-                    temp_path = temp.name
+                # Create temp file for the AppleScript and close it before execution
+                temp = tempfile.NamedTemporaryFile(suffix=".scpt", delete=False)
+                temp_path = temp.name
+                try:
+                    temp.write(arguments["code_snippet"].encode("utf-8"))
+                    temp.close()
+
+                    # Execute the AppleScript
+                    cmd = ["/usr/bin/osascript", temp_path]
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+
+                    if result.returncode != 0:
+                        error_message = f"AppleScript execution failed: {result.stderr}"
+                        return [types.TextContent(type="text", text=error_message)]
+
+                    return [types.TextContent(type="text", text=result.stdout)]
+                except subprocess.TimeoutExpired:
+                    return [
+                        types.TextContent(
+                            type="text",
+                            text=f"AppleScript execution timed out after {timeout} seconds",
+                        )
+                    ]
+                except Exception as e:
+                    return [types.TextContent(type="text", text=f"Error executing AppleScript: {str(e)}")]
+                finally:
+                    # Clean up the temporary file
                     try:
-                        # Write the AppleScript to the temp file
-                        temp.write(arguments["code_snippet"].encode("utf-8"))
-                        temp.flush()
-
-                        # Execute the AppleScript
-                        cmd = ["/usr/bin/osascript", temp_path]
-                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-
-                        if result.returncode != 0:
-                            error_message = f"AppleScript execution failed: {result.stderr}"
-                            return [types.TextContent(type="text", text=error_message)]
-
-                        return [types.TextContent(type="text", text=result.stdout)]
-                    except subprocess.TimeoutExpired:
-                        return [
-                            types.TextContent(
-                                type="text",
-                                text=f"AppleScript execution timed out after {timeout} seconds",
-                            )
-                        ]
-                    except Exception as e:
-                        return [types.TextContent(type="text", text=f"Error executing AppleScript: {str(e)}")]
-                    finally:
-                        # Clean up the temporary file
-                        try:
-                            os.unlink(temp_path)
-                        except:  # noqa: E722
-                            pass
+                        os.unlink(temp_path)
+                    except:  # noqa: E722
+                        pass
             else:
                 raise ValueError(f"Unknown tool: {name}")
 
