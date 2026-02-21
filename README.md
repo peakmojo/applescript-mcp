@@ -96,15 +96,35 @@ List all my upcoming calendar events for this week
 }
 ```
 
-### Python
-Install uv
-```
-brew install uv
-git clone ...
+### Python (uvx)
+
+No clone needed — run directly from the git repo:
+
+```json
+{
+  "mcpServers": {
+    "applescript_execute": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/peakmojo/applescript-mcp",
+        "mcp-server-applescript"
+      ]
+    }
+  }
+}
 ```
 
-Run the server
+### Python (local development)
+
+For local development, clone the repo and use `uv` to run from source:
+
 ```
+brew install uv
+git clone https://github.com/peakmojo/applescript-mcp.git
+```
+
+```json
 {
   "mcpServers": {
     "applescript_execute": {
@@ -113,7 +133,7 @@ Run the server
         "--directory",
         "/path/to/your/repo",
         "run",
-        "src/applescript_mcp/server.py"
+        "mcp-server-applescript"
       ]
     }
   }
