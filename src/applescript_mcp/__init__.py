@@ -4,7 +4,8 @@ import logging
 from . import server
 
 logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger('mcp_applescript')
+logger = logging.getLogger("mcp_applescript")
+
 
 def main() -> None:
     logger.debug("Starting applescript-mcp main()")
@@ -13,6 +14,7 @@ def main() -> None:
     logger.debug("About to run server.main()")
     asyncio.run(server.main())
     logger.debug("Server main() completed")
+
 
 if __name__ == "__main__":
     main()

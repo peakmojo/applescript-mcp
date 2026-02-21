@@ -158,9 +158,7 @@ class TestHandleCallTool:
 
     async def test_timeout(self, handlers):
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("cmd", 30)):
-            result = await handlers["call_tool"](
-                "applescript_execute", {"code_snippet": "slow script", "timeout": 30}
-            )
+            result = await handlers["call_tool"]("applescript_execute", {"code_snippet": "slow script", "timeout": 30})
 
         assert "timed out after 30 seconds" in result[0].text
 

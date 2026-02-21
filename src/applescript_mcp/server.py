@@ -11,7 +11,7 @@ from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 from pydantic import AnyUrl
 
-logger = logging.getLogger('applescript_mcp')
+logger = logging.getLogger("applescript_mcp")
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -20,7 +20,7 @@ def parse_arguments() -> argparse.Namespace:
 
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument('--log-level', default=os.environ.get('LOG_LEVEL', 'INFO'))
+    parser.add_argument("--log-level", default=os.environ.get("LOG_LEVEL", "INFO"))
     return parser.parse_args()
 
 
@@ -28,10 +28,7 @@ def configure_logging() -> None:
     """Configure logging based on the log level argument"""
     args = parse_arguments()
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)
-    logging.basicConfig(
-        level=log_level,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
+    logging.basicConfig(level=log_level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     logger.setLevel(log_level)
     logger.info(f"Logging configured with level: {args.log_level.upper()}")
 
@@ -76,14 +73,14 @@ async def main() -> None:
                     "properties": {
                         "code_snippet": {
                             "type": "string",
-                            "description": """Multi-line appleScript code to execute. """
+                            "description": """Multi-line appleScript code to execute. """,
                         },
                         "timeout": {
                             "type": "integer",
-                            "description": "Command execution timeout in seconds (default: 60)"
-                        }
+                            "description": "Command execution timeout in seconds (default: 60)",
+                        },
                     },
-                    "required": ["code_snippet"]
+                    "required": ["code_snippet"],
                 },
             )
         ]
@@ -102,21 +99,16 @@ async def main() -> None:
                 timeout = arguments.get("timeout", 60)
 
                 # Create temp file for the AppleScript
-                with tempfile.NamedTemporaryFile(suffix='.scpt', delete=False) as temp:
+                with tempfile.NamedTemporaryFile(suffix=".scpt", delete=False) as temp:
                     temp_path = temp.name
                     try:
                         # Write the AppleScript to the temp file
-                        temp.write(arguments["code_snippet"].encode('utf-8'))
+                        temp.write(arguments["code_snippet"].encode("utf-8"))
                         temp.flush()
 
                         # Execute the AppleScript
                         cmd = ["/usr/bin/osascript", temp_path]
-                        result = subprocess.run(
-                            cmd,
-                            capture_output=True,
-                            text=True,
-                            timeout=timeout
-                        )
+                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
                         if result.returncode != 0:
                             error_message = f"AppleScript execution failed: {result.stderr}"
@@ -159,6 +151,8 @@ async def main() -> None:
             ),
         )
 
+
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(main())
