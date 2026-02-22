@@ -1,17 +1,17 @@
 import argparse
+import asyncio
 import logging
-import json
-from typing import Any, Dict, List, Optional
 import os
 import tempfile
-import subprocess
-from mcp.server.models import InitializationOptions
+from typing import Any
+
+import mcp.server.stdio
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
-import mcp.server.stdio
+from mcp.server.models import InitializationOptions
 from pydantic import AnyUrl
 
-logger = logging.getLogger('applescript_mcp')
+logger = logging.getLogger("applescript_mcp")
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -20,23 +20,20 @@ def parse_arguments() -> argparse.Namespace:
 
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument('--log-level', default=os.environ.get('LOG_LEVEL', 'INFO'))
+    parser.add_argument("--log-level", default=os.environ.get("LOG_LEVEL", "INFO"))
     return parser.parse_args()
 
 
-def configure_logging():
+def configure_logging() -> None:
     """Configure logging based on the log level argument"""
     args = parse_arguments()
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)
-    logging.basicConfig(
-        level=log_level,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
+    logging.basicConfig(level=log_level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     logger.setLevel(log_level)
     logger.info(f"Logging configured with level: {args.log_level.upper()}")
 
 
-async def main():
+async def main() -> None:
     """Run the AppleScript MCP server."""
     configure_logging()
     logger.info("Server starting")
@@ -56,30 +53,34 @@ async def main():
         return [
             types.Tool(
                 name="applescript_execute",
-                description="""Run AppleScript code to interact with Mac applications and system features. This tool can access and manipulate data in Notes, Calendar, Contacts, Messages, Mail, Finder, Safari, and other Apple applications. Common use cases include but not limited to:
-- Retrieve or create notes in Apple Notes
-- Access or add calendar events and appointments
-- List contacts or modify contact details
-- Search for and organize files using Spotlight or Finder
-- Get system information like battery status, disk space, or network details
-- Read or organize browser bookmarks or history
-- Access or send emails, messages, or other communications
-- Read, write, or manage file contents
-- Execute shell commands and capture the output
-""",
+                description=(
+                    "Run AppleScript code to interact with Mac applications and system features."
+                    " This tool can access and manipulate data in Notes, Calendar, Contacts,"
+                    " Messages, Mail, Finder, Safari, and other Apple applications."
+                    " Common use cases include but not limited to:\n"
+                    "- Retrieve or create notes in Apple Notes\n"
+                    "- Access or add calendar events and appointments\n"
+                    "- List contacts or modify contact details\n"
+                    "- Search for and organize files using Spotlight or Finder\n"
+                    "- Get system information like battery status, disk space, or network details\n"
+                    "- Read or organize browser bookmarks or history\n"
+                    "- Access or send emails, messages, or other communications\n"
+                    "- Read, write, or manage file contents\n"
+                    "- Execute shell commands and capture the output\n"
+                ),
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "code_snippet": {
                             "type": "string",
-                            "description": """Multi-line appleScript code to execute. """
+                            "description": """Multi-line appleScript code to execute. """,
                         },
                         "timeout": {
                             "type": "integer",
-                            "description": "Command execution timeout in seconds (default: 60)"
-                        }
+                            "description": "Command execution timeout in seconds (default: 60)",
+                        },
                     },
-                    "required": ["code_snippet"]
+                    "required": ["code_snippet"],
                 },
             )
         ]
@@ -96,39 +97,45 @@ async def main():
 
                 # Get timeout parameter or use default
                 timeout = arguments.get("timeout", 60)
-                
-                # Create temp file for the AppleScript
-                with tempfile.NamedTemporaryFile(suffix='.scpt', delete=False) as temp:
-                    temp_path = temp.name
+
+                # Create temp file for the AppleScript and close it before execution
+                temp = tempfile.NamedTemporaryFile(suffix=".scpt", delete=False)
+                temp_path = temp.name
+                try:
+                    temp.write(arguments["code_snippet"].encode("utf-8"))
+                    temp.close()
+
+                    # Execute the AppleScript asynchronously
+                    proc = await asyncio.create_subprocess_exec(
+                        "/usr/bin/osascript",
+                        temp_path,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
                     try:
-                        # Write the AppleScript to the temp file
-                        temp.write(arguments["code_snippet"].encode('utf-8'))
-                        temp.flush()
-                        
-                        # Execute the AppleScript
-                        cmd = ["/usr/bin/osascript", temp_path]
-                        result = subprocess.run(
-                            cmd, 
-                            capture_output=True, 
-                            text=True, 
-                            timeout=timeout
-                        )
-                        
-                        if result.returncode != 0:
-                            error_message = f"AppleScript execution failed: {result.stderr}"
-                            return [types.TextContent(type="text", text=error_message)]
-                        
-                        return [types.TextContent(type="text", text=result.stdout)]
-                    except subprocess.TimeoutExpired:
-                        return [types.TextContent(type="text", text=f"AppleScript execution timed out after {timeout} seconds")]
-                    except Exception as e:
-                        return [types.TextContent(type="text", text=f"Error executing AppleScript: {str(e)}")]
-                    finally:
-                        # Clean up the temporary file
-                        try:
-                            os.unlink(temp_path)
-                        except:
-                            pass
+                        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+                    except asyncio.TimeoutError:
+                        proc.kill()
+                        return [
+                            types.TextContent(
+                                type="text",
+                                text=f"AppleScript execution timed out after {timeout} seconds",
+                            )
+                        ]
+
+                    if proc.returncode != 0:
+                        error_message = f"AppleScript execution failed: {stderr.decode()}"
+                        return [types.TextContent(type="text", text=error_message)]
+
+                    return [types.TextContent(type="text", text=stdout.decode())]
+                except Exception as e:
+                    return [types.TextContent(type="text", text=f"Error executing AppleScript: {str(e)}")]
+                finally:
+                    # Clean up the temporary file
+                    try:
+                        os.unlink(temp_path)
+                    except OSError:
+                        pass
             else:
                 raise ValueError(f"Unknown tool: {name}")
 
@@ -150,6 +157,8 @@ async def main():
             ),
         )
 
+
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(main())

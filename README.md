@@ -140,6 +140,32 @@ git clone https://github.com/peakmojo/applescript-mcp.git
 }
 ```
 
+## Development
+
+### Setup
+
+```bash
+brew install uv
+uv sync --dev
+```
+
+### Run all checks (in parallel)
+
+```bash
+uv run check
+```
+
+This runs linting, formatting, type checking, and tests with 100% coverage — all in parallel.
+
+### Individual commands
+
+```bash
+uv run lint        # ruff linter
+uv run format      # ruff auto-format
+uv run typecheck   # pyrefly type checker
+uv run test        # pytest with 100% coverage enforcement
+```
+
 ## Docker Usage
 
 When running in a Docker container, you can use the special hostname `host.docker.internal` to connect to your Mac host:

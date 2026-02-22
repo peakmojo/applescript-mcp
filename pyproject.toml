@@ -14,6 +14,45 @@ dependencies = [
 
 [project.scripts]
 mcp-server-applescript = "applescript_mcp:main"
+check = "applescript_mcp._dev:check"
+lint = "applescript_mcp._dev:lint"
+format = "applescript_mcp._dev:format_code"
+typecheck = "applescript_mcp._dev:typecheck"
+test = "applescript_mcp._dev:test"
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "pyrefly",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/applescript_mcp"] 
+packages = ["src/applescript_mcp"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.pyrefly]
+project-includes = ["src/**/*.py", "tests/**/*.py"]
+python-version = "3.10"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+omit = ["src/applescript_mcp/_dev.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "if __name__",
+]
+# 100% test coverage is a reasonable target when AI generates the tests alongside
+# the code — every line of production code should have a corresponding test path,
+# and there's no human-time cost to maintaining full coverage.
