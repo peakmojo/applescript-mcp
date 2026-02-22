@@ -12,5 +12,8 @@ dependencies = [
     "pydantic"
 ]
 
+[project.scripts]
+mcp-server-applescript = "applescript_mcp:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/applescript_mcp"] 
